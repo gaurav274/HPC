@@ -10,8 +10,14 @@
 #define PARALLEL_SORT_H
 
 #define ERR(err) if (err) return err
+#define DEBUG(msg) std::cout << msg << std::endl;
 #include <mpi.h>
 #include <stdlib.h>
+#include <iostream> 
+#include <cstring>
+#include <algorithm>
+#include <unistd.h>
+using namespace std;
 /**
  * @brief   Parallel, distributed sorting over all processors in `comm`. Each
  *          processor has the local input [begin, end).
@@ -27,7 +33,23 @@
  */
 void parallel_sort(int * begin, int* end, MPI_Comm comm);
 
-void generate_random_number();
+
+/**
+ * @brief   Helper function to recursively sort all the number in the comm
+ *
+ *
+ * @param local_arr     Pointer to the first element in the local sequence.
+ * @param local_size    Size of the local_arr
+ * @param sorted_local_arr     Pointer to the first element in the resulting sorted local sequence.
+ * @param sorted_local_size    Size of the sorted_local_arr
+ * @param comm  The MPI communicator with the processors participating in the
+ *              sorting.
+ */
+int parallel_sort_recursive(int *local_arr, int local_size, int **sorted_local_arr, int *sorted_local_size, MPI_Comm comm);
+
+
+//Random number generator
+int generate_random_number(int m);
 
 /*********************************************************************
  *              Declare your own helper functions here               *

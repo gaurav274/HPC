@@ -10,7 +10,8 @@
 
 // implementation of your parallel sorting
 void parallel_sort(int * begin, int* end, MPI_Comm comm) {
-	int  size, rank, err;
+	while(1);
+	int size, rank, err;
 	int *new_arr = NULL;
 	int new_size;
 	
