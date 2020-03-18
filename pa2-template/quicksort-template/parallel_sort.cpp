@@ -10,19 +10,38 @@
 
 // implementation of your parallel sorting
 void parallel_sort(int * begin, int* end, MPI_Comm comm) {
-    int  size, rank, err;
+	int  size, rank, err;
+	int *new_arr = NULL;
+	int new_size;
+	
+	err = MPI_Comm_size(comm, &size); 
+    err = MPI_Comm_rank(comm, &rank); 
+
+	parallel_sort_recursive(begin, end - begin, &new_arr, &new_size, comm);
+	for (int i = 0; i < new_size; i++)
+		DEBUG(new_arr[i]);
+	//restored based on original size
+}
+int parallel_sort_recursive(int *local_arr, int local_size, int **sorted_local_arr, int *sorted_local_size, MPI_Comm comm){
+	int  size, rank, err;
 
     err = MPI_Comm_size(comm, &size); ERR(err);
     err = MPI_Comm_rank(comm, &rank); ERR(err);
-
-    int local_size = end - begin;
-    int k = generate_random_number();
-    // Right now assuming everyone has n/p elements
+	
+	if (size == 1)
+	{
+		sort(local_arr, local_arr + local_size);
+		*sorted_local_size = local_size;
+		*sorted_local_arr = local_arr;
+		return 0;
+	}
+	int k = generate_random_number(size);
+	// Right now assuming everyone has n/p elements
     int is_pivot_holder = (k/local_size) == rank;
     int pivot;
     
     if(is_pivot_holder){
-        pivot = *(begin + (k % local_size));
+        pivot = *(local_arr + (k % local_size));
         err = MPI_Bcast(&pivot, 1, MPI_INT, rank, comm); ERR(err);    
     }
     else{
@@ -33,7 +52,7 @@ void parallel_sort(int * begin, int* end, MPI_Comm comm) {
     int local_low=0, local_high=0;
     for (int i = 0; i < local_size; i++)
     {
-        if(begin[i] <= pivot)
+        if(local_arr[i] <= pivot)
             local_low++;
         else
             local_high++;
@@ -42,9 +61,9 @@ void parallel_sort(int * begin, int* end, MPI_Comm comm) {
     //store lower elements in local_lows and higher in local_highs
     int *local_lows = (int *)malloc(sizeof(int) * local_low);
     int *local_highs = (int *)malloc(sizeof(int) * local_high);
-    int l = h = 0;
+    int l = 0,h = 0;
     for (int i = 0; i < local_size; i++){
-        if(begin[i] <= pivot)
+        if(local_arr[i] <= pivot)
             local_lows[l++];
         else
             local_highs[h++];
@@ -52,10 +71,10 @@ void parallel_sort(int * begin, int* end, MPI_Comm comm) {
 
     //Gather total lows and total highs
     int *all_lows = (int *)malloc(sizeof(int) * size);
-    MPI_Allgather(&low, 1, MPI_INT, all_lows, 1, MPI_INT, comm);
+    err = MPI_Allgather(&local_low, 1, MPI_INT, all_lows, 1, MPI_INT, comm); ERR(err);
 
     int *all_highs = (int *)malloc(sizeof(int) * size);
-    MPI_Allgather(&high, 1, MPI_INT, all_highs, 1, MPI_INT, comm);
+    err = MPI_Allgather(&local_high, 1, MPI_INT, all_highs, 1, MPI_INT, comm); ERR(err);
 
     int total_low = 0;
     for (int i = 0; i < size; i++)
@@ -74,31 +93,91 @@ void parallel_sort(int * begin, int* end, MPI_Comm comm) {
     
     //coloring to split the communicator
     int color = (rank >= lsize);
+
     //prepare for alltoall transfer
-    if(!color){
+    int *sendcounts = (int *)malloc(sizeof(int) * size);
+	int *sdispls = (int *)malloc(sizeof(int) * size);
+	int *recvcounts = (int *)malloc(sizeof(int) * size);
+	int *rdispls = (int *)malloc(sizeof(int) * size);
+	int *send_buf, *recv_buf;
+	if (!color)
+	{
 		//I will send local_highs to all processors with color 1
-		int *sendcounts = (int *)malloc(sizeof(int) * size);
-		int *sdispls = (int *)malloc(sizeof(int) * size);
-		int *recvcounts = (int *)malloc(sizeof(int) * size);
-		int *rdispls = (int *)malloc(sizeof(int) * size);
+		//and recieve local_lows from all processors with color 1
+		
+		//Setting up sending logic
 		for (int i = 0; i < size; i++){
 			if(i < lsize)
 				sendcounts[i] = 0;
 			else
-				sendcounts[i] = local_highs / hsize;
+				sendcounts[i] = local_high / hsize;
 		}
-		sendcounts[size - 1] += local_highs % hsize;
-		sdispls[0] = 0;
-		for (int i = 1; i < size; i++)
-			sdispls[i] = sdispls[i - 1] + sendcounts[i];
+		sendcounts[size - 1] += local_high % hsize;
 		
-		int *send_buf = (int *)malloc(sizeof(int) *)
+		send_buf = local_highs;
+		//Setting up receiving logic
+		for (int i = 0; i < size; i++){
+			if(i >= lsize)
+				recvcounts[i] = 0;
+			else
+				recvcounts[i] = all_lows[i] / lsize + ((rank==lsize-1) ? all_lows[i] % lsize : 0);
+			
+		}		
+		recv_buf = (int *)malloc(sizeof(int) * rdispls[size - 1]);
+
 	}
-    //int new_rank = color ? (rank - (size / 2)) : (rank + (size / 2));
-    
+	else{
+		//I will send local_lows to all processors with color 0
+		//recieve local_highs from them
 
+		//Setting up sending logic
+		for (int i = 0; i < size; i++){
+			if(i >= lsize)
+				sendcounts[i] = 0;
+			else
+				sendcounts[i] = local_low / lsize;
+		}
+		sendcounts[lsize - 1] += local_low % lsize;
+		
+		send_buf = local_lows;
+		
+		//Setting up receiving logic
+		for (int i = 0; i < size; i++){
+			if(i < lsize)
+				recvcounts[i] = all_highs[i] / hsize + ((rank==size-1) ? all_highs[i] % hsize : 0);
+			else
+				recvcounts[i] = 0;
+		}
+		
+		recv_buf = (int *)malloc(sizeof(int) * rdispls[size - 1]);
+	}
+	
+	sdispls[0] = 0;
+	for (int i = 1; i < size; i++)
+		sdispls[i] = sdispls[i - 1] + sendcounts[i];
+
+	
+	rdispls[0] = 0;
+	for (int i = 1; i < size; i++)
+		rdispls[i] = rdispls[i - 1] + recvcounts[i];
+	
+	err = MPI_Alltoallv(send_buf, sendcounts, sdispls, MPI_INT, recv_buf, recvcounts, rdispls, MPI_INT, comm);
+	ERR(err);
+
+	MPI_Comm subcomm;
+	err = MPI_Comm_split(comm, color, rank, &subcomm); ERR(err);
+
+	int *new_local_arr = NULL;
+	int new_local_size;
+	err = parallel_sort_recursive(recv_buf, rdispls[size - 1], &new_local_arr, &new_local_size, subcomm);
+	ERR(err);
+
+	int *tmp = (int *)malloc(sizeof(int) * new_local_size);
+	memcpy(tmp, new_local_arr, sizeof(int) * new_local_size);
+	*sorted_local_size = new_local_size;
+	*sorted_local_arr = tmp;
+	return 0;
 }
-
 int generate_random_number(int m){
     srand48(43);
     long rand = lrand48();
