@@ -10,7 +10,7 @@
 
 // implementation of your parallel sorting
 void parallel_sort(int * begin, int* end, MPI_Comm comm) {
-	while(1);
+	//while(1);
 	int size, rank, err;
 	int *new_arr = NULL;
 	int new_size;
@@ -19,9 +19,8 @@ void parallel_sort(int * begin, int* end, MPI_Comm comm) {
     err = MPI_Comm_rank(comm, &rank); 
 
 	parallel_sort_recursive(begin, end - begin, &new_arr, &new_size, comm);
-	for (int i = 0; i < new_size; i++)
-		DEBUG(new_arr[i]);
-	//restored based on original size
+   
+    //restored based on original size
 }
 int parallel_sort_recursive(int *local_arr, int local_size, int **sorted_local_arr, int *sorted_local_size, MPI_Comm comm){
 	int  size, rank, err;
@@ -48,7 +47,7 @@ int parallel_sort_recursive(int *local_arr, int local_size, int **sorted_local_a
     else{
         err = MPI_Bcast(&pivot, 1, MPI_INT, rank, comm); ERR(err);
     }
-
+    
     //count elements lower and higher than pivot
     int local_low=0, local_high=0;
     for (int i = 0; i < local_size; i++)
@@ -65,11 +64,12 @@ int parallel_sort_recursive(int *local_arr, int local_size, int **sorted_local_a
     int l = 0,h = 0;
     for (int i = 0; i < local_size; i++){
         if(local_arr[i] <= pivot)
-            local_lows[l++];
+            local_lows[l++] = local_arr[i];
         else
-            local_highs[h++];
+            local_highs[h++] = local_arr[i];
     }
-
+    
+    
     //Gather total lows and total highs
     int *all_lows = (int *)malloc(sizeof(int) * size);
     err = MPI_Allgather(&local_low, 1, MPI_INT, all_lows, 1, MPI_INT, comm); ERR(err);
@@ -85,13 +85,12 @@ int parallel_sort_recursive(int *local_arr, int local_size, int **sorted_local_a
     for (int i = 0; i < size; i++)
         total_high += all_highs[i];
 
+    
     //Compute the communicator split based on total_highs, total_lows
     int lsize = (total_low * size)/ (total_high + total_low);
     if(!lsize)
         lsize++;
     int hsize = size - lsize;
-
-    
     //coloring to split the communicator
     int color = (rank >= lsize);
 
@@ -118,14 +117,12 @@ int parallel_sort_recursive(int *local_arr, int local_size, int **sorted_local_a
 		send_buf = local_highs;
 		//Setting up receiving logic
 		for (int i = 0; i < size; i++){
-			if(i >= lsize)
+			if(i < lsize)
 				recvcounts[i] = 0;
 			else
 				recvcounts[i] = all_lows[i] / lsize + ((rank==lsize-1) ? all_lows[i] % lsize : 0);
 			
 		}		
-		recv_buf = (int *)malloc(sizeof(int) * rdispls[size - 1]);
-
 	}
 	else{
 		//I will send local_lows to all processors with color 0
@@ -144,33 +141,52 @@ int parallel_sort_recursive(int *local_arr, int local_size, int **sorted_local_a
 		
 		//Setting up receiving logic
 		for (int i = 0; i < size; i++){
-			if(i < lsize)
-				recvcounts[i] = all_highs[i] / hsize + ((rank==size-1) ? all_highs[i] % hsize : 0);
+			if(i >= lsize)
+                recvcounts[i] = 0;
 			else
-				recvcounts[i] = 0;
+				recvcounts[i] = all_highs[i] / hsize + ((rank==size-1) ? all_highs[i] % hsize : 0);
 		}
-		
-		recv_buf = (int *)malloc(sizeof(int) * rdispls[size - 1]);
 	}
 	
 	sdispls[0] = 0;
 	for (int i = 1; i < size; i++)
-		sdispls[i] = sdispls[i - 1] + sendcounts[i];
+		sdispls[i] = sdispls[i - 1] + sendcounts[i-1];
 
 	
 	rdispls[0] = 0;
 	for (int i = 1; i < size; i++)
-		rdispls[i] = rdispls[i - 1] + recvcounts[i];
-	
-	err = MPI_Alltoallv(send_buf, sendcounts, sdispls, MPI_INT, recv_buf, recvcounts, rdispls, MPI_INT, comm);
+		rdispls[i] = rdispls[i - 1] + recvcounts[i-1];
+    
+    //create recv_buf to recv elements form other processors and local elements
+    int recv_buf_size; 
+	if(!color)
+        recv_buf_size = rdispls[size - 1] + recvcounts[size - 1] + local_low;
+    else
+        recv_buf_size = rdispls[size - 1] + recvcounts[size - 1] + local_high;
+    
+    recv_buf = (int *)malloc(sizeof(int) * recv_buf_size);
+
+    err = MPI_Alltoallv(send_buf, sendcounts, sdispls, MPI_INT, recv_buf, recvcounts, rdispls, MPI_INT, comm);
 	ERR(err);
-
-	MPI_Comm subcomm;
+    
+    if(!color){
+        for(int i=0;i<local_low;i++)
+            recv_buf[rdispls[size - 1] + recvcounts[size - 1] + i] = local_lows[i];
+           
+    }
+    else{
+         for(int i=0;i<local_high;i++)
+            recv_buf[rdispls[size - 1] + recvcounts[size - 1] + i] = local_highs[i];
+    }
+   
+    MPI_Comm subcomm;
 	err = MPI_Comm_split(comm, color, rank, &subcomm); ERR(err);
-
+    
+    //Append local elements to the recv_buf
 	int *new_local_arr = NULL;
 	int new_local_size;
-	err = parallel_sort_recursive(recv_buf, rdispls[size - 1], &new_local_arr, &new_local_size, subcomm);
+    
+	err = parallel_sort_recursive(recv_buf, recv_buf_size, &new_local_arr, &new_local_size, subcomm);
 	ERR(err);
 
 	int *tmp = (int *)malloc(sizeof(int) * new_local_size);

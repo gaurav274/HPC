@@ -10,7 +10,7 @@
 #define PARALLEL_SORT_H
 
 #define ERR(err) if (err) return err
-#define DEBUG(msg) std::cout << msg << std::endl;
+#define DEBUG(rank, msg) std::cout << rank << ":" << msg << std::endl;
 #include <mpi.h>
 #include <stdlib.h>
 #include <iostream> 
