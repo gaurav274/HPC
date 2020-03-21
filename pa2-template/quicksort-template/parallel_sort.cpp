@@ -255,9 +255,20 @@ int generate_random_number(int m){
     return rand % m;
 }
 int getPivot(int *local_arr, int local_size, MPI_Comm comm){
-    int pivot = local_arr[generate_random_number(local_size)];
-    int err = MPI_Bcast(&pivot, 1, MPI_INT, 0, comm); ERR(err);
-    return pivot;
+	int  size, rank, err;
+
+    err = MPI_Comm_size(comm, &size); ERR(err);
+    err = MPI_Comm_rank(comm, &rank); ERR(err);
+
+    int pivot = 0;
+    sort(local_arr, local_arr + local_size);
+    if(local_size)	pivot = local_arr[local_size/2];
+    
+    int *lmedians = (int *)malloc(sizeof(int) * size);
+    err = MPI_Allgather(&pivot, 1, MPI_INT, lmedians, 1, MPI_INT, comm); ERR(err);
+
+    sort(lmedians, lmedians + size);
+    return lmedians[size/2];
 }
 /*********************************************************************
  *             Implement your own helper functions here:             *
