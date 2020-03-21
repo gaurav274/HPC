@@ -51,6 +51,9 @@ int parallel_sort_recursive(int *local_arr, int local_size, int **sorted_local_a
 //Random number generator
 int generate_random_number(int m);
 
+//Generates Pivot
+int getPivot(int *local_arr, int local_size, MPI_Comm comm);
+
 /*********************************************************************
  *              Declare your own helper functions here               *
  *********************************************************************/
