@@ -10,7 +10,7 @@
 #define PARALLEL_SORT_H
 
 #define ERR(err) if (err) return err
-#define DEBUG(msg) std::cout << msg << std::endl;
+#define DEBUG(rank, msg) std::cout << rank << ":" << msg << std::endl;
 #include <mpi.h>
 #include <stdlib.h>
 #include <iostream> 
@@ -50,6 +50,9 @@ int parallel_sort_recursive(int *local_arr, int local_size, int **sorted_local_a
 
 //Random number generator
 int generate_random_number(int m);
+
+//Generates Pivot
+int getPivot(int *local_arr, int local_size, MPI_Comm comm);
 
 /*********************************************************************
  *              Declare your own helper functions here               *
