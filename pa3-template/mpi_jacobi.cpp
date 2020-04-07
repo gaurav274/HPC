@@ -44,7 +44,7 @@ void distribute_vector(const int n, double *input_vector, double **local_vector,
     }
     MPI_Scatterv(input_vector, sendcounts, displs, MPI_DOUBLE, *local_vector, local_x_size, MPI_DOUBLE, 0, commcol);
 
-    MPI_Comm_free(commcol);
+    MPI_Comm_free(&commcol);
 }
 
 // gather the local vector distributed among (i,0) to the processor (0,0)
@@ -67,11 +67,11 @@ void gather_vector(const int n, double *local_vector, double *output_vector, MPI
             recvcounts[i] = block_decompose(n, col_size, i);
         displs[0] = 0;
         for (int i = 1; i < col_size; i++)
-            displs[i] = displs[i - 1] + sendcounts[i - 1];
+            displs[i] = displs[i - 1] + recvcounts[i - 1];
     }
     MPI_Gatherv(local_vector, local_x_size, MPI_DOUBLE, output_vector, recvcounts, displs, MPI_DOUBLE, 0, commcol);
 
-    MPI_Comm_free(commcol);
+    MPI_Comm_free(&commcol);
 
 }
 
@@ -85,8 +85,8 @@ void distribute_matrix(const int n, double *input_matrix, double **local_matrix,
     MPI_Comm_size(commcol, &col_size);
     int local_x_size = n*block_decompose_by_dim(n, comm, 0);
     double *local_vector = new double[local_x_size];
-    int sendcounts[col_size], displs[col_size];
     if(get_coord_by_dim(comm, 1) == 0){
+        int sendcounts[col_size], displs[col_size];
         if (!col_rank)
         {
             for (int i = 0; i < col_size; i++)
@@ -99,13 +99,14 @@ void distribute_matrix(const int n, double *input_matrix, double **local_matrix,
     }
 
     //scatter from col=0
-    int belongs[2] = {0, 1};
+    belongs[0] = 0;
+    belongs[1] = 1;
     MPI_Comm commrow;
     MPI_Cart_sub(comm, belongs, &commrow);
     int row_rank, row_size;
     MPI_Comm_rank(commcol, &row_rank);
     MPI_Comm_size(commcol, &row_size);
-    int local_x_size = block_decompose_by_dim(n, comm, 1);
+    local_x_size = block_decompose_by_dim(n, comm, 1);
     int local_y_size = block_decompose_by_dim(n, comm, 0);
     //local_vector = new double[local_x_size];
     int sendcounts[row_size], displs[row_size];
@@ -119,41 +120,36 @@ void distribute_matrix(const int n, double *input_matrix, double **local_matrix,
     for (int i = 0; i < local_y_size; i++)
         MPI_Scatterv(local_vector + i*n, sendcounts, displs, MPI_DOUBLE, *local_matrix + local_x_size*i, local_x_size, MPI_DOUBLE, 0, commrow);
 
-    MPI_Comm_free(commcol);
-    MPI_Comm_free(commrow);
+    MPI_Comm_free(&commcol);
+    MPI_Comm_free(&commrow);
     free(local_vector);
 }
 
 void transpose_bcast_vector(const int n, double *col_vector, double *row_vector, MPI_Comm comm)
 {
-    int dims[2];
-    int periods[2];
-    int coords[2];
-    MPI_Cart_get(comm, 2, dims, periods, coords);
-    int col = coord[0];
+    int col = get_coord_by_dim(comm, 0);
     int local_size = block_decompose_by_dim(n, comm, 0);
     /* Create 1D row subgrids */
-    int belongs[2];
+    int belongs[2] = {0,1};
     MPI_Comm commrow;
-    belongs[0] = 0;
-    belongs[1] = 1; // this dimension belongs to subgrid
     MPI_Cart_sub(comm, belongs, &commrow);
     int row_rank;
     int rank;
     MPI_Comm_rank(commrow, &row_rank);
     if (!row_rank)
     {
-        MPI_Send(col_vector, local_size, MPI_DOUBLE, col, '99', commrow);
+        MPI_Send(col_vector, local_size, MPI_DOUBLE, col, 99, commrow);
     }
     if (row_rank == col)
     {
-        MPI_Send(row_vector, local_size, MPI_DOUBLE, 0, '99', commrow, MPI_STATUS_IGNORE);
+        MPI_Recv(row_vector, local_size, MPI_DOUBLE, 0, 99, commrow, MPI_STATUS_IGNORE);
     }
 
     // MPI_Barrier(comm);
 
     belongs[0] = 1;
     belongs[1] = 0;
+    MPI_Comm commcol;
     MPI_Cart_sub(comm, belongs, &commcol);
     MPI_Bcast(row_vector, local_size, MPI_DOUBLE, col, commcol);
 
@@ -166,6 +162,7 @@ void distributed_matrix_vector_mult(const int n, double *local_A, double *local_
 
     int local_x_size = block_decompose_by_dim(n, comm, 0);
     int local_y_size = block_decompose_by_dim(n, comm, 1);
+    double *new_local_x = new double[local_x_size];
     transpose_bcast_vector(n, local_x, new_local_x, comm);
 
     for (int row = 0; row < local_y_size; row++)
@@ -181,7 +178,7 @@ void distributed_matrix_vector_mult(const int n, double *local_A, double *local_
     MPI_Cart_sub(comm, belongs, &commrow);
     int row_rank;
     MPI_Comm_rank(commrow, &row_rank);
-    MPI_Reduce(local_y, local_y, local_y_size, MPI_SUM, 0, commrow);
+    MPI_Reduce(local_y, local_y, local_y_size, MPI_DOUBLE, MPI_SUM, 0, commrow);
     MPI_Comm_free(&commrow);
 }
 
