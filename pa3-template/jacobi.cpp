@@ -15,6 +15,7 @@
 #include <iostream>
 #include <math.h>
 #include <cstring>
+#include <stdlib.h>
 
 // Calculates y = A*x for a square n-by-n matrix A, and n-dimensional vectors x
 // and y
@@ -46,6 +47,7 @@ void matrix_vector_mult(const int n, const int m, const double *A, const double 
     }
 }
 
+/* computes ||Ax-b||*/
 double helper(const int n, const double *A, const double *b, const double *x, double *y){
     matrix_vector_mult(n, A, x, y);
     for (int i = 0; i < n; i++)
@@ -72,7 +74,6 @@ void jacobi(const int n, double *A, double *b, double *x, int max_iter, double l
     
     for (int i = 0; i < n; i++)
         D[n * i + i] = A[n * i + i];
-
     for (int i = 0; i < n;i++){
         for (int j = 0; j < n;j++){
             int idx = n * i + j;
@@ -87,11 +88,14 @@ void jacobi(const int n, double *A, double *b, double *x, int max_iter, double l
 
     int itr = 0;
     double *y = (double *)(malloc(n * sizeof(double)));
-    while(helper(n, A, b, x, y) > l2_termination && itr < max_iter){
+    while(helper(n, A, b, x, y) > l2_termination && (itr++) < max_iter){
+        //y = Rx
         matrix_vector_mult(n, R, x, y);
+        //y = b - Rx
         for (int i = 0; i < n; i++)
-            b[i] -= y[i];
-        matrix_vector_mult(n, invD, b, x);
+            y[i] = b[i] - y[i];
+        //x = (Dinv)y
+        matrix_vector_mult(n, invD, y, x);       
     }
     free(D); free(R); free(invD); free(y);
 }
