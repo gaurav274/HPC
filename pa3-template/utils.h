@@ -42,7 +42,14 @@ inline int block_decompose_by_dim(const int n, MPI_Comm comm, int dim)
     return block_decompose(n, dims[dim], coords[dim]);
 }
 
-
+inline int get_coord_by_dim(MPI_Comm comm, int dim){
+    // get dimensions
+    int dims[2];
+    int periods[2];
+    int coords[2];
+    MPI_Cart_get(comm, 2, dims, periods, coords);
+    return coords[dim];
+}
 /*********************************************************************
  *                  DECLARE YOUR OWN FUNCTIONS HERE                  *
  *********************************************************************/
