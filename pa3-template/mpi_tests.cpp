@@ -71,8 +71,68 @@ TEST(MpiTest, MatrixVectorMult1)
     }
 }
 
-
 // test parallel MPI matrix vector multiplication
+TEST(MpiTest, MatrixVectorMult2)
+{
+   
+    // test random matrixes, test parallel code with sequential solutions
+    std::vector<double> A;
+    std::vector<double> x;
+    std::vector<double> mpi_y;
+
+    // get grid communicator
+    MPI_Comm grid_comm;
+    get_grid_comm(&grid_comm);
+    int rank;
+    MPI_Comm_rank(grid_comm, &rank);
+
+    int n = 100;
+    // initialize data only on rank 0
+    if (rank == 0)
+    {
+        A = diag_dom_rand(n);
+        x = randn(n, 100.0, 50.0);
+    }
+
+    // getting sequential results
+    std::vector<double> y;
+    if (rank == 0)
+    {
+        y.resize(n);
+        matrix_vector_mult(n, &A[0], &x[0], &y[0]);
+    }
+//     if (rank == 0)
+//     {
+//         for(int i=0;i < n; i++){
+//             for(int j=0;j < n; j++)
+//                 printf("%f ", A[i*n+j]);
+//             printf("\n");
+//         }
+//         for(int i=0;i < n; i++)
+//             printf("%f ", x[i]);
+//         printf("\n");
+
+//         for(int i=0;i < n; i++)
+//             printf("%f ", y[i]);
+//         printf("\n");
+//     }
+    // parallel jacobi
+    if (rank == 0)
+        mpi_y.resize(n);
+    mpi_matrix_vector_mult(n, &A[0], &x[0], &mpi_y[0], grid_comm);
+
+    if (rank == 0)
+    {
+        // checking if all values are correct (up to some error value)
+        for (int i = 0; i < n; ++i)
+        {
+            EXPECT_NEAR(y[i], mpi_y[i], 1e-8) << " MPI solution x[" << i << "] differs from sequential result";
+        }
+    }
+}
+
+
+//test parallel MPI matrix vector multiplication
 TEST(MpiTest, Jacobi1)
 {
     // simple 4 by 4 input matrix
@@ -116,7 +176,7 @@ TEST(MpiTest, JacobiCrossTest1)
     int rank;
     MPI_Comm_rank(grid_comm, &rank);
 
-    int n = 36;
+    int n = 100000;
     // initialize data only on rank 0
     if (rank == 0)
     {
@@ -130,8 +190,9 @@ TEST(MpiTest, JacobiCrossTest1)
     {
         x.resize(n);
         jacobi(n, &A[0], &b[0], &x[0]);
+        printf("%f\n", x[0]);
     }
-
+    
     // parallel jacobi
     if (rank == 0)
         mpi_x.resize(n);
