@@ -200,6 +200,11 @@ void distributed_matrix_vector_mult(const int n, double *local_A, double *local_
     }
 //     for(int i=0; i<local_y_size;i++)
 //         printf("y:%f %d\n", new_local_y[i], rank);
+    
+//     if(get_coord_by_dim(comm, 0) == 0){
+//         printf("###################@\n");
+//         printf("%.11f\n",new_local_y[13]);
+//     }
 
     int belongs[2];
     MPI_Comm commrow;
@@ -210,6 +215,8 @@ void distributed_matrix_vector_mult(const int n, double *local_A, double *local_
     MPI_Comm_rank(commrow, &row_rank);
     MPI_Reduce(new_local_y, local_y, local_y_size, MPI_DOUBLE, MPI_SUM, 0, commrow);
     MPI_Comm_free(&commrow);
+    free(new_local_x);
+    free(new_local_y);
 }
 
 // Solves Ax = b using the iterative jacobi method
@@ -278,6 +285,9 @@ void distributed_jacobi(const int n, double *local_A, double *local_b, double *l
     for(int iter=0;iter<max_iter && !terminate;iter++){
         double *local_y = new double[local_y_size];
         distributed_matrix_vector_mult(n, local_R, local_x, local_y, comm);
+//         if(rank==0&&iter==1){
+//             printf("^^^^^^^^^^^^^^^^$ %f\n",local_y[0]);
+//         }
         //only do in first columns
         if(!col){
             for(int i=0; i< local_y_size; i++)
@@ -285,20 +295,26 @@ void distributed_jacobi(const int n, double *local_A, double *local_b, double *l
         }
         // ||A*x - b||
         distributed_matrix_vector_mult(n, local_A, local_x, local_y, comm);
-        double local_norm, global_norm;
+        double local_norm=0, global_norm;
         if(!col){
             for(int i=0; i< local_y_size; i++)
-                local_norm += ((local_b[i] - local_y[i])*(local_b[i] - local_y[i]));
+                local_norm += (local_b[i] - local_y[i])*(local_b[i] - local_y[i]);
         }
         MPI_Reduce(&local_norm, &global_norm, 1, MPI_DOUBLE, MPI_SUM, 0, commcol);
-        if(rank == 0){
-            if(sqrt(global_norm) <= l2_termination){
-                // we need to terminate so broadcast everyone to stop
-                terminate = 1;
-                MPI_Bcast(&terminate, 1, MPI_INT, 0, comm);
-            }
-                
+        MPI_Bcast(&global_norm, 1, MPI_DOUBLE, 0, comm);
+//             double* x = new double[16];
+//             gather_vector(n, local_x, x, comm);
+//         if(iter==2){
+//             printf("OH NOOOOOOOOOOOO %f %d\n", sqrt(global_norm),iter);
+//             for(int i=0;i<16;i++){
+//                 printf("%f %d\n",x[i],i);
+//             }
+//         }
+        if(sqrt(global_norm) <= l2_termination){
+            // we need to terminate so broadcast everyone to stop
+            terminate = 1;
         }
+        free(local_y);
     }
     //MPI_Send(local_diagnol, local_y_size, MPI_DOUBLE, 0, 99, commrow);
 }

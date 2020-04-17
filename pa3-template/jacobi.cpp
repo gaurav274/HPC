@@ -16,6 +16,7 @@
 #include <math.h>
 #include <cstring>
 #include <stdlib.h>
+#include <stdio.h>
 
 // Calculates y = A*x for a square n-by-n matrix A, and n-dimensional vectors x
 // and y
@@ -88,14 +89,29 @@ void jacobi(const int n, double *A, double *b, double *x, int max_iter, double l
 
     int itr = 0;
     double *y = (double *)(malloc(n * sizeof(double)));
-    while(helper(n, A, b, x, y) > l2_termination && (itr++) < max_iter){
+    
+    bool terminate = false;
+    while(!terminate && (itr++) < max_iter){
         //y = Rx
         matrix_vector_mult(n, R, x, y);
+        //if(itr==2)    printf("!!!!!!!!!!!!!!!!! %f\n",y[0]);
         //y = b - Rx
         for (int i = 0; i < n; i++)
             y[i] = b[i] - y[i];
         //x = (Dinv)y
-        matrix_vector_mult(n, invD, y, x);       
+        matrix_vector_mult(n, invD, y, x); 
+        
+        double norm = helper(n, A, b, x, y);
+//         if(itr==3){
+//             printf("SEQ NORM = %f %d\n",norm,itr);
+//             for(int i=0;i<16;i++){
+//                 printf("%f %d\n",x[i],i);
+//             }
+//         }
+        if(norm <= l2_termination){
+            terminate = true;
+            //printf("SEQ NORM = %f %d\n",norm,itr);
+        }
     }
     free(D); free(R); free(invD); free(y);
 }
